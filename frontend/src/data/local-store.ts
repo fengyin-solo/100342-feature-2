@@ -1,8 +1,10 @@
 import { SEED_ROWS } from './seed'
-import type { EntryRow } from './types'
+import type { EntryRow, FilterTemplate } from './types'
 
 // 本地持久化：数据放在 localStorage 里，刷新、关掉再打开都还在。
 const STORAGE_KEY = 'forest-fire-patrol:entries'
+// 巡护任务页的当班筛选模板单独存一份，不和业务条目混在一起。
+const TEMPLATE_STORAGE_KEY = 'forest-fire-patrol:patrol-filter-templates'
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -56,4 +58,58 @@ export function resetRows(key: string): EntryRow[] {
 
 export function storageKey(): string {
   return STORAGE_KEY
+}
+
+// —— 当班筛选模板 ——
+
+let templateCache: FilterTemplate[] | null = null
+
+function readTemplates(): FilterTemplate[] {
+  if (templateCache !== null) {
+    return templateCache
+  }
+  if (typeof window === 'undefined' || !window.localStorage) {
+    templateCache = []
+    return templateCache
+  }
+  try {
+    const raw = window.localStorage.getItem(TEMPLATE_STORAGE_KEY)
+    templateCache = raw ? (JSON.parse(raw) as FilterTemplate[]) : []
+  } catch {
+    templateCache = []
+  }
+  return templateCache
+}
+
+function writeTemplates(templates: FilterTemplate[]): void {
+  templateCache = templates
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates))
+  }
+}
+
+export function listTemplates(shift?: string): FilterTemplate[] {
+  const templates = readTemplates()
+  return shift ? templates.filter((item) => item.shift === shift) : templates
+}
+
+export function saveTemplate(template: FilterTemplate): FilterTemplate[] {
+  const templates = readTemplates()
+  // 同一当班、同一模板名视为覆盖更新，避免同名模板越存越多。
+  const index = templates.findIndex(
+    (item) => item.shift === template.shift && item.name === template.name,
+  )
+  if (index >= 0) {
+    templates[index] = template
+  } else {
+    templates.push(template)
+  }
+  writeTemplates(templates)
+  return templates.filter((item) => item.shift === template.shift)
+}
+
+export function removeTemplate(id: string, shift?: string): FilterTemplate[] {
+  const templates = readTemplates().filter((item) => item.id !== id)
+  writeTemplates(templates)
+  return templates.filter((item) => item.shift === shift)
 }
